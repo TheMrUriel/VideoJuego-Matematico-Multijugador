@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">VSMath</string>
+    <string name="title_activity_main">VSMath</string>
+    <string name="package_name">com.VSMath.GAME</string>
+    <string name="custom_url_scheme">com.VSMath.GAME</string>
+</resources>

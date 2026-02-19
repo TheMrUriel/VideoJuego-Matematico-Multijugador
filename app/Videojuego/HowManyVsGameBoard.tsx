@@ -1,0 +1,663 @@
+"use client";
+import React, { useState, useEffect, useCallback } from "react";
+import { FaUser, FaCat, FaDog, FaDragon, FaHippo, FaFrog, FaFish, FaSpider } from "react-icons/fa";
+import { GiShamblingZombie } from "react-icons/gi";
+import LifeBar from "./_components/LifeBar";
+import OnScreenKeyboard from "./_components/OnScreenKeyboard";
+import TurnTimer from "./_components/TurnTimer";
+import GameOverModal from "./_components/GameOverModal";
+import { Button, Row, Col, Card, Alert } from "react-bootstrap";
+
+const MAX_LIFE = 300;
+const TURN_TIME = 30;
+
+const ICONS = [
+    "Gato", "Perro", "Dragón", "Hipopótamo", "Rana", "Pez", "Araña", "Zombie"
+];
+
+const ICON_MAP: Record<string, React.ReactElement> = {
+    Gato: <FaCat className="icon-animal" />,
+    Perro: <FaDog className="icon-animal" />,
+    Dragón: <FaDragon className="icon-animal" />,
+    Hipopótamo: <FaHippo className="icon-animal" />,
+    Rana: <FaFrog className="icon-animal" />,
+    Pez: <FaFish className="icon-animal" />,
+    Araña: <FaSpider className="icon-animal" />,
+    Zombie: <GiShamblingZombie className="icon-animal" />,
+};
+
+type HowManyModes = {
+    suma: boolean;
+    resta: boolean;
+    contar: boolean;
+};
+
+type ProblemType = "suma" | "resta" | "contar";
+
+function pluralLabel(icon: string) {
+    return icon.toLowerCase() + "/s";
+}
+
+type HowManyProblem =
+    | { type: "suma"; icon: string; a: number; b: number; answer: number }
+    | { type: "resta"; icon: string; a: number; b: number; answer: number }
+    | { type: "contar"; icons: string[]; counts: Record<string, number>; target: string; answer: number; total: number; arrangement: string[] };
+
+function getRandomInt(min: number, max: number): number {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function shuffle<T>(arr: T[]): T[] {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+
+function generateHowManyProblem(howManyModes?: HowManyModes): HowManyProblem {
+    const enabledModes: ProblemType[] = [];
+    if (howManyModes?.suma) enabledModes.push("suma");
+    if (howManyModes?.resta) enabledModes.push("resta");
+    if (howManyModes?.contar) enabledModes.push("contar");
+    const type = enabledModes[getRandomInt(0, enabledModes.length - 1)];
+
+    if (type === "suma") {
+        const icon = ICONS[getRandomInt(0, ICONS.length - 1)];
+        const a = getRandomInt(1, 6);
+        const b = getRandomInt(1, 6);
+        return { type, icon, a, b, answer: a + b };
+    } else if (type === "resta") {
+        const icon = ICONS[getRandomInt(0, ICONS.length - 1)];
+        const a = getRandomInt(2, 10);
+        const b = getRandomInt(1, Math.min(6, a - 1));
+        return { type, icon, a, b, answer: a - b };
+    } else {
+        const numTypes = getRandomInt(2, Math.min(3, ICONS.length));
+        const icons = shuffle(ICONS).slice(0, numTypes);
+        const counts: Record<string, number> = {};
+        let total = 0;
+        for (let i = 0; i < icons.length; i++) {
+            const n = getRandomInt(1, 6);
+            counts[icons[i]] = n;
+            total += n;
+        }
+        let arrangement: string[] = [];
+        icons.forEach(icon => {
+            arrangement.push(...Array(counts[icon]).fill(icon));
+        });
+        arrangement = shuffle(arrangement);
+
+        const target = icons[getRandomInt(0, icons.length - 1)];
+        const answer = counts[target];
+
+        return { type: "contar", icons, counts, target, answer, total, arrangement };
+    }
+}
+
+type Player = {
+    name: string;
+    life: number;
+};
+
+type GameBoardProps = {
+    onRestart: () => void;
+    characters: [string | null, string | null];
+    howManyModes?: HowManyModes;
+};
+
+type DamageInfo = {
+    playerIndex: number;
+    amount: number;
+    self: boolean;
+} | null;
+
+type PlayerAnswer = {
+    turn: number;
+    correct: boolean;
+    timeout: boolean;
+    reaction: number;
+    operationText: string;
+};
+
+type PlayerStats = {
+    correct: number;
+    total: number;
+    reactionTimes: number[];
+    maxStreak: number;
+    maxErrorStreak: number;
+    currentStreak: number;
+    currentErrorStreak: number;
+    fastest: number;
+    slowest: number;
+    timeouts: number;
+    errors: number;
+    damageDone: number;
+    damageTaken: number;
+    answers: PlayerAnswer[];
+};
+
+function initialStats(): PlayerStats {
+    return {
+        correct: 0,
+        total: 0,
+        reactionTimes: [],
+        maxStreak: 0,
+        maxErrorStreak: 0,
+        currentStreak: 0,
+        currentErrorStreak: 0,
+        fastest: 999,
+        slowest: 0,
+        timeouts: 0,
+        errors: 0,
+        damageDone: 0,
+        damageTaken: 0,
+        answers: [],
+    };
+}
+
+export default function HowManyVsGameBoard({ onRestart, characters, howManyModes }: GameBoardProps) {
+    const [players, setPlayers] = useState<Player[]>([
+        { name: "Jugador 1", life: MAX_LIFE },
+        { name: "Jugador 2", life: MAX_LIFE },
+    ]);
+    const [turn, setTurn] = useState<number>(0);
+    const [problem, setProblem] = useState<HowManyProblem>(() => generateHowManyProblem(howManyModes));
+    const [input, setInput] = useState<string>("");
+    const [timerKey, setTimerKey] = useState<number>(0);
+    const [showGameOver, setShowGameOver] = useState<boolean>(false);
+    const [winner, setWinner] = useState<number | null>(null);
+
+    const [answerResult, setAnswerResult] = useState<null | "correct" | "wrong">(null);
+    const [damageInfo, setDamageInfo] = useState<DamageInfo>(null);
+    const [animations, setAnimations] = useState<[null | "damage" | "attack", null | "damage" | "attack"]>([null, null]);
+    const [dialogs, setDialogs] = useState<[string | null, string | null]>([null, null]);
+    const [currentTimeLeft, setCurrentTimeLeft] = useState(TURN_TIME);
+    const [stats, setStats] = useState<[PlayerStats, PlayerStats]>([
+        initialStats(),
+        initialStats()
+    ]);
+
+    const handleAnswer = useCallback((timeLeft: number) => {
+        if (answerResult !== null) return;
+        const isCorrect = Number(input) === problem.answer;
+        const newPlayers = [...players];
+        const newAnimations: [null | "damage" | "attack", null | "damage" | "attack"] = [null, null];
+        const newDialogs: [string | null, string | null] = [null, null];
+        let damage = 10;
+
+        const reactionTime = TURN_TIME - timeLeft;
+        const newStats = [...stats] as [PlayerStats, PlayerStats];
+        const s = newStats[turn];
+        s.total += 1;
+        s.reactionTimes.push(reactionTime);
+
+        let opText = "";
+        if (problem.type === "suma") {
+            opText = `${problem.a} + ${problem.b} (${problem.icon})`;
+        } else if (problem.type === "resta") {
+            opText = `${problem.a} - ${problem.b} (${problem.icon})`;
+        } else {
+            opText = `¿Cuántos ${pluralLabel(problem.target)} hay? [${problem.icons.map(icon => `${pluralLabel(icon)}:${problem.counts[icon]}`).join(", ")}]`;
+        }
+
+        s.answers.push({
+            turn: s.total,
+            correct: isCorrect,
+            timeout: false,
+            reaction: reactionTime,
+            operationText: opText,
+        });
+
+        if (isCorrect) {
+            s.correct += 1;
+            s.currentStreak += 1;
+            s.maxStreak = Math.max(s.maxStreak, s.currentStreak);
+            s.currentErrorStreak = 0;
+            if (reactionTime < s.fastest) s.fastest = reactionTime;
+            if (reactionTime > s.slowest) s.slowest = reactionTime;
+        } else {
+            s.errors += 1;
+            s.currentErrorStreak += 1;
+            s.maxErrorStreak = Math.max(s.maxErrorStreak, s.currentErrorStreak);
+            s.currentStreak = 0;
+        }
+        if (isCorrect) {
+            damage = Math.max(5, Math.round((timeLeft / TURN_TIME) * 30));
+            const rival = (turn + 1) % 2;
+            newStats[rival].damageTaken += damage;
+            s.damageDone += damage;
+        } else {
+            s.damageTaken += 5;
+        }
+        setStats(newStats);
+
+        if (isCorrect) {
+            const rival = (turn + 1) % 2;
+            newPlayers[rival].life = Math.max(0, newPlayers[rival].life - damage);
+            setAnswerResult("correct");
+            setDamageInfo({
+                playerIndex: rival,
+                amount: damage,
+                self: false,
+            });
+            newAnimations[rival] = "damage";
+            newAnimations[turn] = "attack";
+            newDialogs[turn] = "¡Toma!";
+            newDialogs[rival] = "¡Ay!";
+        } else {
+            newPlayers[turn].life = Math.max(0, newPlayers[turn].life - damage);
+            setAnswerResult("wrong");
+            setDamageInfo({
+                playerIndex: turn,
+                amount: damage,
+                self: true,
+            });
+            newAnimations[turn] = "damage";
+            newDialogs[turn] = "¡Auch!";
+        }
+        setPlayers(newPlayers);
+        setAnimations(newAnimations);
+        setDialogs(newDialogs);
+
+        if (newPlayers[0].life === 0 || newPlayers[1].life === 0) {
+            setTimeout(() => {
+                setWinner(newPlayers[0].life === 0 ? 1 : 0);
+                setShowGameOver(true);
+            }, 1200);
+        }
+    }, [answerResult, input, problem, players, turn, stats]);
+
+    useEffect(() => {
+        if (showGameOver || answerResult !== null) return;
+        function handleKeyDown(e: KeyboardEvent) {
+            if (showGameOver || answerResult !== null) return;
+            if (e.key >= "0" && e.key <= "9") {
+                if (input.length < 2) setInput((prev) => prev + e.key);
+            } else if (e.key === "Backspace") {
+                setInput((prev) => prev.slice(0, -1));
+            } else if (e.key === "Enter") {
+                handleAnswer(currentTimeLeft);
+            } else if (e.key === "c" || e.key === "C") {
+                setInput("");
+            }
+        }
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [input, showGameOver, answerResult, handleAnswer, currentTimeLeft]);
+
+    function handleNumber(n: string) {
+        if (input.length < 2 && answerResult === null) setInput(input + n);
+    }
+    function handleBackspace() {
+        if (answerResult === null) setInput(input.slice(0, -1));
+    }
+    function handleClear() {
+        if (answerResult === null) setInput("");
+    }
+
+    function nextTurn() {
+        setInput("");
+        setTimerKey((k) => k + 1);
+        setTurn((t) => (t + 1) % 2);
+        setProblem(generateHowManyProblem(howManyModes));
+        setAnswerResult(null);
+        setDamageInfo(null);
+        setAnimations([null, null]);
+        setDialogs([null, null]);
+        setCurrentTimeLeft(TURN_TIME);
+    }
+
+    function handleTimeOut() {
+        if (answerResult !== null) return;
+        const newPlayers = [...players];
+        const newAnimations: [null | "damage" | "attack", null | "damage" | "attack"] = [null, null];
+        const newDialogs: [string | null, string | null] = [null, null];
+        const damage = 10;
+        newPlayers[turn].life = Math.max(0, newPlayers[turn].life - damage);
+        setPlayers(newPlayers);
+        setAnswerResult("wrong");
+        setDamageInfo({
+            playerIndex: turn,
+            amount: damage,
+            self: true,
+        });
+        newAnimations[turn] = "damage";
+        newDialogs[turn] = "¡Ups!";
+        setAnimations(newAnimations);
+        setDialogs(newDialogs);
+
+        const reactionTime = TURN_TIME;
+        const newStats = [...stats] as [PlayerStats, PlayerStats];
+        const s = newStats[turn];
+
+        let opText = "";
+        if (problem.type === "suma") {
+            opText = `${problem.a} + ${problem.b} (${problem.icon})`;
+        } else if (problem.type === "resta") {
+            opText = `${problem.a} - ${problem.b} (${problem.icon})`;
+        } else {
+            opText = `¿Cuántos ${pluralLabel(problem.target)} hay? [${problem.icons.map(icon => `${pluralLabel(icon)}:${problem.counts[icon]}`).join(", ")}]`;
+        }
+
+        s.total += 1;
+        s.reactionTimes.push(reactionTime);
+        s.timeouts += 1;
+        s.errors += 1;
+        s.currentErrorStreak += 1;
+        s.maxErrorStreak = Math.max(s.maxErrorStreak, s.currentErrorStreak);
+        s.currentStreak = 0;
+        s.damageTaken += damage;
+        s.answers.push({
+            turn: s.total,
+            correct: false,
+            timeout: true,
+            reaction: reactionTime,
+            operationText: opText,
+        });
+        setStats(newStats);
+
+        if (newPlayers[0].life === 0 || newPlayers[1].life === 0) {
+            setTimeout(() => {
+                setWinner(newPlayers[0].life === 0 ? 1 : 0);
+                setShowGameOver(true);
+            }, 1200);
+        }
+    }
+
+    function handleRestart() {
+        setPlayers([
+            { name: "Jugador 1", life: MAX_LIFE },
+            { name: "Jugador 2", life: MAX_LIFE },
+        ]);
+        setTurn(0);
+        setProblem(generateHowManyProblem(howManyModes));
+        setShowGameOver(false);
+        setWinner(null);
+        setInput("");
+        setTimerKey((k) => k + 1);
+        setAnswerResult(null);
+        setDamageInfo(null);
+        setAnimations([null, null]);
+        setDialogs([null, null]);
+        setCurrentTimeLeft(TURN_TIME);
+        setStats([
+            initialStats(),
+            initialStats()
+        ]);
+    }
+
+    const canContinue = answerResult !== null && !showGameOver && players[0].life > 0 && players[1].life > 0;
+
+    function renderDamageMessage() {
+        if (!damageInfo) return null;
+        const playerIcon = characters[damageInfo.playerIndex]
+            ? ICON_MAP[characters[damageInfo.playerIndex]!]
+            : <FaUser />;
+        return (
+            <Row className="mb-2">
+                <Col className="text-center">
+                    <div
+                        style={{
+                            fontSize: 36,
+                            fontWeight: "bold",
+                            color: "#e53935",
+                            background: "#fff3cd",
+                            borderRadius: 12,
+                            padding: "10px 0",
+                            marginBottom: 8,
+                            border: "3px solid #e53935",
+                            boxShadow: "0 0 10px #e53935",
+                            letterSpacing: 1,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 12,
+                            animation: "shake 0.5s",
+                        }}
+                    >
+                        {playerIcon}
+                        <span style={{ fontSize: 44, color: "#e53935", marginBottom: 4 }}>💔</span>
+                        -{damageInfo.amount}
+                    </div>
+                    <style>{`
+                        @keyframes shake {
+                            0% { transform: translateX(0); }
+                            20% { transform: translateX(-10px); }
+                            40% { transform: translateX(10px); }
+                            60% { transform: translateX(-10px); }
+                            80% { transform: translateX(10px); }
+                            100% { transform: translateX(0); }
+                        }
+                    `}</style>
+                </Col>
+            </Row>
+        );
+    }
+
+    function renderProblem() {
+        if (problem.type === "suma" || problem.type === "resta") {
+            const isSuma = problem.type === "suma";
+            const a = problem.a;
+            const b = problem.b;
+            const icon = problem.icon;
+            return (
+                <div
+                    style={{
+                        display: "inline-block",
+                        textAlign: "left",
+                        maxWidth: "100%",
+                        overflowX: "auto",
+                        WebkitOverflowScrolling: "touch",
+                    }}
+                >
+                    <div style={{
+                        display: "flex",
+                        alignItems: "center",
+                        marginBottom: 8,
+                        flexWrap: "nowrap",
+                        overflowX: "auto",
+                        maxWidth: "100vw"
+                    }}>
+                        <span style={{ width: 36, fontSize: 36, fontWeight: "bold", display: "inline-block", textAlign: "right" }}>&nbsp;</span>
+                        <div style={{ display: "flex", gap: 2, flexWrap: "nowrap" }}>
+                            {Array.from({ length: a }).map((_, i) => (
+                                <span key={"a" + i}>{ICON_MAP[icon]}</span>
+                            ))}
+                        </div>
+                    </div>
+                    <div style={{
+                        display: "flex",
+                        alignItems: "center",
+                        marginBottom: 8,
+                        flexWrap: "nowrap",
+                        overflowX: "auto",
+                        maxWidth: "100vw"
+                    }}>
+                        <span style={{ width: 36, fontSize: 36, fontWeight: "bold", display: "inline-block", textAlign: "right" }}>
+                            {isSuma ? "+" : "−"}
+                        </span>
+                        <div style={{ display: "flex", gap: 2, flexWrap: "nowrap" }}>
+                            {Array.from({ length: b }).map((_, i) => (
+                                <span key={"b" + i}>{ICON_MAP[icon]}</span>
+                            ))}
+                        </div>
+                    </div>
+                    <div style={{
+                        borderBottom: "4px solid #222",
+                        marginLeft: 36,
+                        marginTop: 2,
+                        marginBottom: 2,
+                        height: 0,
+                        minWidth: 80,
+                        width: "100%",
+                        maxWidth: "100vw"
+                    }} />
+                    <style>{`
+                        .icon-animal {
+                            font-size: 60px;
+                        }
+                        @media (max-width: 600px) {
+                            .icon-animal {
+                                font-size: 36px !important;
+                            }
+                        }
+                        @media (max-width: 400px) {
+                            .icon-animal {
+                                font-size: 28px !important;
+                            }
+                        }
+                    `}</style>
+                </div>
+            );
+        } else {
+            return (
+                <div
+                    style={{
+                        fontSize: 60,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        maxWidth: "100vw",
+                        overflowX: "auto",
+                        WebkitOverflowScrolling: "touch"
+                    }}
+                >
+                    {problem.arrangement.map((icon, i) => (
+                        <span key={i}>{ICON_MAP[icon]}</span>
+                    ))}
+                    <style>{`
+                        .icon-animal {
+                            font-size: 60px;
+                        }
+                        @media (max-width: 600px) {
+                            .icon-animal {
+                                font-size: 36px !important;
+                            }
+                        }
+                        @media (max-width: 400px) {
+                            .icon-animal {
+                                font-size: 28px !important;
+                            }
+                        }
+                    `}</style>
+                </div>
+            );
+        }
+    }
+
+    function renderProblemText() {
+        if (problem.type === "suma") {
+            return <div className="fs-4 mb-2">¿Cuántos hay en total?</div>;
+        } else if (problem.type === "resta") {
+            return <div className="fs-4 mb-2">¿Cuántos quedan?</div>;
+        } else {
+            return <div className="fs-4 mb-2">¿Cuántos <span style={{ fontWeight: "bold", color: "#1976d2" }}>{pluralLabel(problem.target)}</span> hay?</div>;
+        }
+    }
+
+    return (
+        <Card className="p-3 shadow-lg">
+            <Row className="mb-3">
+                <Col>
+                    <LifeBar
+                        player={players[0]}
+                        active={turn === 0}
+                        icon={characters[0] ? ICON_MAP[characters[0]] : <FaUser />}
+                        animation={animations[0]}
+                        dialog={dialogs[0]}
+                    />
+                </Col>
+                <Col className="text-end">
+                    <LifeBar
+                        player={players[1]}
+                        active={turn === 1}
+                        icon={characters[1] ? ICON_MAP[characters[1]] : <FaUser />}
+                        animation={animations[1]}
+                        dialog={dialogs[1]}
+                    />
+                </Col>
+            </Row>
+            <Row className="mb-2">
+                <Col className="text-center">
+                    <TurnTimer
+                        key={timerKey}
+                        duration={TURN_TIME}
+                        onTimeOut={handleTimeOut}
+                        onAnswered={handleAnswer}
+                        disabled={showGameOver || answerResult !== null}
+                        input={input}
+                        correctAnswer={problem.answer}
+                        turn={turn}
+                        onTick={setCurrentTimeLeft}
+                    />
+                </Col>
+            </Row>
+            <Row className="mb-2">
+                <Col className="text-center">
+                    {renderProblemText()}
+                    {renderProblem()}
+                </Col>
+            </Row>
+            {renderDamageMessage()}
+            {canContinue && (
+                <Row className="mb-2">
+                    <Col className="text-center">
+                        <Button variant="primary" size="lg" onClick={nextTurn}>
+                            Continuar
+                        </Button>
+                    </Col>
+                </Row>
+            )}
+            {answerResult === "correct" && (
+                <Row className="mb-2">
+                    <Col className="text-center">
+                        <Alert variant="success" className="fs-4 fw-bold mb-0">
+                            ¡Correcto!
+                        </Alert>
+                    </Col>
+                </Row>
+            )}
+            {answerResult === "wrong" && (
+                <Row className="mb-2">
+                    <Col className="text-center">
+                        <Alert variant="danger" className="fs-4 fw-bold mb-0">
+                            Incorrecto
+                        </Alert>
+                        <div className="text-muted">La respuesta era: <b>{problem.answer}</b></div>
+                    </Col>
+                </Row>
+            )}
+            <Row className="mb-2">
+                <Col className="text-center">
+                    <div className="fs-2 mb-2">
+                        Respuesta: <span className="fw-bold">{input || "?"}</span>
+                    </div>
+                    <OnScreenKeyboard
+                        onNumber={handleNumber}
+                        onBackspace={handleBackspace}
+                        onClear={handleClear}
+                        onEnter={() => handleAnswer(currentTimeLeft)}
+                        disabled={showGameOver || answerResult !== null}
+                    />
+                </Col>
+            </Row>
+            <Row>
+                <Col className="text-center">
+                    <Button variant="secondary" onClick={onRestart}>Salir</Button>
+                </Col>
+            </Row>
+            <GameOverModal
+                show={showGameOver}
+                winner={winner}
+                onRestart={handleRestart}
+                onClose={onRestart}
+                stats={stats}
+                characters={characters}
+            />
+        </Card>
+    );
+}
