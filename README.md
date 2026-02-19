@@ -1,36 +1,158 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🎮 Videojuego Multijugador Educativo de Matemáticas
 
-## Getting Started
+Videojuego multijugador educativo desarrollado como aplicación web y adaptado a dispositivo móvil Android.  
+Está dirigido a estudiantes de **3° y 4° grado de primaria**, con el objetivo de fortalecer sus habilidades matemáticas mediante una dinámica competitiva 1 vs 1.
 
-First, run the development server:
+---
+
+## 📖 Descripción del Proyecto
+
+El videojuego permite que dos jugadores compitan en un mismo dispositivo resolviendo problemas matemáticos en el menor tiempo posible.
+
+Cada jugador cuenta con:
+
+- Barra de vida
+- Temporizador
+- Panel numérico para responder
+
+### Dinámica del juego
+
+- Si el jugador responde correctamente, inflige daño proporcional al tiempo al oponente.
+- Si responde incorrectamente, pierde vida propia.
+- Gana el jugador que conserve vida al finalizar la partida.
+- Al terminar, se muestran estadísticas, medallas y recomendaciones de mejora.
+
+El juego funciona completamente **sin conexión a internet**, permitiendo su uso en entornos educativos con acceso limitado a red.
+
+---
+
+## 🧠 Temas Matemáticos Incluidos
+
+- Sumas
+- Restas
+- Multiplicaciones
+- Secuencia numérica
+- Comparación de números (mayor que / menor que)
+- Suma de cantidades
+- Figuras geométricas
+- Números romanos
+- Fracciones
+
+---
+
+## 🛠 Tecnologías Utilizadas
+
+- **Next.js**
+- **React**
+- **Bootstrap**
+- **React Icons**
+- **Capacitor**
+- **Android Studio**
+
+---
+
+## 💻 Requisitos del Sistema
+
+### Para desarrollo web
+
+- Node.js >= 20
+- npm >= 10
+
+### Para versión Android
+
+- Android Studio
+- Java JDK 17
+- Capacitor
+
+---
+
+## 🚀 Instalación y Ejecución (Versión Web)
+
+### Clonar el repositorio
+
+```bash
+git clone https://github.com/TheMrUriel/VideoJuego-Matematico-Multijugador.git
+```
+
+### Ingresar al directorio:
+
+```bash
+cd VideoJuego-Matematico-Multijugador
+```
+
+### Instalar dependencias:
+
+```bash
+npm install
+```
+
+### Ejecutar en modo desarrollo:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Abrir en navegador:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```arduino
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## 📦 Generar versión de producción
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run build
+npm run export
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 📱 Convertir a aplicación Android
 
-## Deploy on Vercel
+### Instalar dependencias móviles:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm install @capacitor/core @capacitor/cli
+npm install @capacitor/android
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Inicializar y configurar:
+
+```bash
+npx cap init
+npx cap add android
+npx cap sync
+```
+
+### Abrir en Android Studio:
+
+```bash
+npx cap open android
+```
+
+Desde Android Studio se puede ejecutar en emulador o dispositivo físico y generar el APK.
+
+---
+
+## 🎯 Características principales
+
+- Multijugador local en un solo dispositivo.
+- Funcionamiento sin conexión a internet.
+- Sistema de vida y temporizador.
+- Retroalimentación inmediata.
+- Sistema de medallas y recomendaciones.
+- Adaptación a dispositivos móviles Android.
+
+---
+
+## 📖 Proyecto académico
+
+Este videojuego fue desarrollado como parte de un proyecto de investigación con el objetivo de potenciar las habilidades matemáticas en estudiantes de nivel primaria mediante el uso de herramientas tecnológicas interactivas.
+
+## 👨‍💻 Autor
+
+Uriel Rivera Pulgarín - 202381
+
+2026
